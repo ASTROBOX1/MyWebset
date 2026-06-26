@@ -107,6 +107,26 @@
     return fetchJSON("/api/products");
   }
 
+  async function fetchCategories() {
+    return fetchJSON("/api/categories");
+  }
+
+  async function loadCategories() {
+    const categoryFilter = document.querySelector("#category-filter");
+    if (!categoryFilter) return;
+
+    try {
+      const categories = await fetchCategories();
+      categoryFilter.innerHTML = `
+        <option value="">All products</option>
+        ${categories.map((category) => `<option value="${category}">${category}</option>`).join("")}
+      `;
+    } catch (error) {
+      categoryFilter.innerHTML = `<option value="">All products</option>`;
+      showToast("Unable to load categories", "error");
+    }
+  }
+
   async function renderProducts() {
     const grid = document.querySelector("[data-product-grid]");
     if (!grid) return;
@@ -295,7 +315,7 @@
         `Total: ${formatMoney(totalPrice)}`,
       ].join("\n");
 
-      window.open(`https://wa.me/201100253740?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      window.open(`https://wa.me/201022170260?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
       localStorage.removeItem(cartKey);
       updateCartBadge();
       renderCart();
@@ -315,12 +335,14 @@
   const categoryFilter = document.querySelector("#category-filter");
   if (categoryFilter) {
     categoryFilter.addEventListener("change", renderProducts);
+    loadCategories();
   }
 
   const catalogChannel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("catalog-updates") : null;
   if (catalogChannel) {
     catalogChannel.onmessage = (event) => {
       if (event.data && event.data.type === "catalog-updated") {
+        loadCategories();
         renderHomeProducts();
         renderProductDetails();
       }
@@ -341,6 +363,7 @@
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
+      loadCategories();
       renderHomeProducts();
       renderProductDetails();
     }
@@ -354,6 +377,8 @@
     formatMoney,
     fetchJSON,
     fetchProducts,
+    fetchCategories,
+    loadCategories,
     renderProducts,
     renderCart,
     renderCheckoutSummary,

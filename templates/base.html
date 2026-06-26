@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}" dir="{{ dir }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Lumora Cosmetics | Premium Beauty & Skincare{% endblock %}</title>
   <meta name="description" content="Lumora Cosmetics offers premium skincare and beauty essentials designed to reveal your natural beauty with a luxurious, modern experience.">
-  <link rel="icon" href="{{ url_for('static', filename='images/logo.svg') }}" type="image/svg+xml">
+  <link rel="icon" href="{{ url_for('static', filename='images/favicon.png') }}" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
@@ -16,19 +16,16 @@
 <body>
   <div class="page-shell">
     <header class="site-header">
-      <a class="brand" href="{{ url_for('index') }}">
-        <img class="brand-logo" src="{{ url_for('static', filename='images/logo.svg') }}" alt="Lumora Cosmetics logo">
-        <span>
-          <strong>Lumora Cosmetics</strong>
-          <small>Premium beauty, softly made</small>
-        </span>
+        <a class="brand" href="{{ url_for('index') }}" aria-label="Lumora Cosmetics">
+        <img class="brand-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Lumora Cosmetics logo">
+        <span class="visually-hidden">Lumora Cosmetics</span>
       </a>
       {% if not hide_public_nav %}
       <nav class="site-nav" aria-label="Primary">
-        <a href="{{ url_for('index') }}#home">Home</a>
-        <a href="{{ url_for('index') }}#shop">Shop</a>
-        <a href="{{ url_for('cart_page') }}">Cart <span class="cart-pill" data-cart-count>0</span></a>
-        <a href="{{ url_for('checkout_page') }}">Checkout</a>
+        <a href="{{ url_for('index') }}#home">{{ t('home') }}</a>
+        <a href="{{ url_for('index') }}#shop">{{ t('shop') }}</a>
+        <a href="{{ url_for('cart_page') }}">{{ t('cart') }} <span class="cart-pill" data-cart-count>0</span></a>
+        <a href="{{ url_for('checkout_page') }}">{{ t('checkout') }}</a>
       </nav>
       {% endif %}
     </header>
@@ -39,8 +36,8 @@
   </div>
   <footer class="site-footer">
     <div class="footer-brand">
-      <img class="brand-logo brand-logo-footer" src="{{ url_for('static', filename='images/logo.svg') }}" alt="Lumora Cosmetics logo">
-      <div>
+      <img class="brand-logo brand-logo-footer" src="{{ url_for('static', filename='images/logo.png') }}" alt="Lumora Cosmetics logo">
+      <div class="footer-brand-copy">
         <strong>Lumora Cosmetics</strong>
         <p>Luxury beauty essentials, thoughtfully crafted to elevate your natural glow.</p>
       </div>
@@ -60,8 +57,7 @@
       </div>
       <div>
         <h3>Contact</h3>
-        <a href="mailto:hello@lumoracosmetics.com">hello@lumoracosmetics.com</a>
-        <a href="tel:+201000000000">+20 100 000 0000</a>
+        <a href="tel:+201022170260">+20 10 2217 0260</a>
       </div>
     </div>
   </footer>

@@ -3,6 +3,7 @@ Test suite for the cosmetics store Flask application.
 """
 
 import json
+import os
 import sqlite3
 import tempfile
 import time
@@ -10,7 +11,16 @@ from pathlib import Path
 import pytest
 from werkzeug.security import generate_password_hash
 
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("INITIAL_ADMIN_USERNAME", "admin")
+os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "admin123")
+os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
+
 import app as app_module
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("INITIAL_ADMIN_USERNAME", "admin")
+os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "admin123")
 
 
 @pytest.fixture

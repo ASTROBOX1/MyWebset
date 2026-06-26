@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+database.db
+uploads/
+MyWebset_data/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

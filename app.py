@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 import secrets
 import sqlite3
 from datetime import datetime
 from functools import wraps
+from logging.config import dictConfig
 from pathlib import Path
 from typing import Any
 from flask import (
     Flask,
     abort,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -18,27 +22,153 @@ from flask import (
     session,
     url_for,
 )
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = BASE_DIR / "database.db"
-UPLOAD_FOLDER = BASE_DIR / "uploads" / "products"
+DATA_DIR = BASE_DIR.parent / "MyWebset_data"
+DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", str(DATA_DIR / "database.db")))
+UPLOAD_FOLDER = Path(os.environ.get("UPLOAD_FOLDER", str(DATA_DIR / "uploads" / "products")))
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 SESSION_ADMIN_KEY = "admin_id"
 SESSION_CSRF_KEY = "admin_csrf"
+DEFAULT_LANGUAGE = "en"
+SUPPORTED_LANGUAGES = {"en": "English", "ar": "العربية"}
+TRANSLATIONS = {
+    "lumora_cosmetics": {"en": "Lumora Cosmetics", "ar": "لومورا كوزميتكس"},
+    "home": {"en": "Home", "ar": "الرئيسية"},
+    "shop": {"en": "Shop", "ar": "المتجر"},
+    "cart": {"en": "Cart", "ar": "السلة"},
+    "checkout": {"en": "Checkout", "ar": "الدفع"},
+    "featured_products": {"en": "Featured Products", "ar": "المنتجات المميزة"},
+    "filter_by_category": {"en": "Filter by category", "ar": "تصفية حسب الفئة"},
+    "all_products": {"en": "All products", "ar": "جميع المنتجات"},
+    "luxury_beauty_reimagined": {"en": "Luxury beauty, reimagined", "ar": "الجمال الفاخر بشكل جديد"},
+    "reveal_your_natural_beauty": {"en": "Reveal Your Natural Beauty", "ar": "أظهر جمالك الطبيعي"},
+    "discover_luxury": {"en": "Discover luxurious skincare and cosmetics crafted to enhance your glow with a soft, modern finish that feels effortlessly premium.", "ar": "اكتشفي مستحضرات العناية بالبشرة والمكياج الفاخرة المصممة لتعزيز إشراقتك بأسلوب ناعم وعصري."},
+    "shop_now": {"en": "Shop Now", "ar": "تسوق الآن"},
+    "explore_collection": {"en": "Explore Collection", "ar": "استكشف المجموعة"},
+    "dermatologist_loved_formulas": {"en": "Dermatologist-loved formulas", "ar": "تركيبات محبوبة من أطباء الجلد"},
+    "velvety_finishes": {"en": "Velvety finishes", "ar": "لمسات مخملية"},
+    "free_shipping": {"en": "Free shipping over $50", "ar": "شحن مجاني للطلبات فوق 50$"},
+    "beauty_with_calm_luxury": {"en": "Beauty with calm luxury", "ar": "جمال برفاهية هادئة"},
+    "no_products_found": {"en": "No products found", "ar": "لم يتم العثور على منتجات"},
+    "no_products_in_category": {"en": "No products in the {category} category.", "ar": "لا توجد منتجات في فئة {category}."},
+    "populate_storefront": {"en": "Add products to populate the storefront.", "ar": "أضف منتجات لعرضها في المتجر."},
+    "unable_to_load_products": {"en": "Unable to load products", "ar": "غير قادر على تحميل المنتجات"},
+    "item_added_to_cart": {"en": "added to cart", "ar": "أضيف إلى السلة"},
+    "item_removed_from_cart": {"en": "Item removed from cart", "ar": "تمت إزالة العنصر من السلة"},
+    "your_cart_is_empty": {"en": "Your cart is empty", "ar": "سلتك فارغة"},
+    "add_items_to_begin": {"en": "Add a few items from the storefront to begin.", "ar": "أضف بعض المنتجات من المتجر للبدء."},
+    "continue_shopping": {"en": "Continue shopping", "ar": "تابع التسوق"},
+    "order_summary": {"en": "Order summary", "ar": "ملخص الطلب"},
+    "items": {"en": "Items", "ar": "العناصر"},
+    "total": {"en": "Total", "ar": "الإجمالي"},
+    "checkout_via_whatsapp": {"en": "Checkout via WhatsApp", "ar": "الدفع عبر واتساب"},
+    "need_help_choosing": {"en": "Need help choosing?", "ar": "تحتاج مساعدة في الاختيار؟"},
+    "help_build_routine": {"en": "Our team can help you build your perfect routine in minutes.", "ar": "فريقنا يمكنه مساعدتك في بناء روتينك المثالي خلال دقائق."},
+    "fast_and_secure": {"en": "Fast and secure", "ar": "سريع وآمن"},
+    "whatsapp_order_info": {"en": "Your order opens in WhatsApp instantly so you can review and send it without friction.", "ar": "يتم فتح طلبك في واتساب فوراً حتى تتمكن من مراجعته وإرساله بسهولة."},
+    "no_order_storage": {"en": "No order storage", "ar": "لا يتم حفظ الطلب"},
+    "name": {"en": "Name", "ar": "الاسم"},
+    "phone": {"en": "Phone", "ar": "الهاتف"},
+    "address": {"en": "Address", "ar": "العنوان"},
+    "notes": {"en": "Notes", "ar": "ملاحظات"},
+    "confirm_order": {"en": "Confirm order", "ar": "تأكيد الطلب"},
+    "loading_category": {"en": "Loading category", "ar": "جارٍ تحميل الفئة"},
+    "loading_product": {"en": "Loading product...", "ar": "جارٍ تحميل المنتج..."},
+    "fetching_product_data": {"en": "Fetching product data from the API.", "ar": "جارٍ جلب بيانات المنتج من الخادم."},
+    "in_stock": {"en": "In stock", "ar": "متوفر"},
+    "add_to_cart": {"en": "Add to cart", "ar": "أضف إلى السلة"},
+    "view_cart": {"en": "View cart", "ar": "عرض السلة"},
+    "luxury_finish": {"en": "Luxury finish", "ar": "لمسة فاخرة"},
+    "fast_delivery": {"en": "Fast delivery", "ar": "توصيل سريع"},
+    "soft_glow": {"en": "Soft glow and refined texture for everyday wear.", "ar": "لمعان ناعم وملمس مصقول للارتداء اليومي."},
+    "admin_access": {"en": "Admin access", "ar": "وصول الإدارة"},
+    "sign_in_dashboard": {"en": "Sign in to the dashboard", "ar": "تسجيل الدخول للوحة التحكم"},
+    "username": {"en": "Username", "ar": "اسم المستخدم"},
+    "password": {"en": "Password", "ar": "كلمة المرور"},
+    "log_in": {"en": "Log in", "ar": "تسجيل الدخول"},
+    "default_credentials_note": {"en": "Default credentials are seeded in SQLite on first launch and should be changed for production.", "ar": "بيانات الدخول الافتراضية تُنشأ في SQLite عند التشغيل الأول ويجب تغييرها في بيئة الإنتاج."},
+}
 PRODUCT_CATEGORIES = ["Lips", "Face", "Eyes", "Skin"]
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "cosmetics-store-dev-secret")
-app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+
+
+def init_logging() -> None:
+    dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                    "datefmt": "%Y-%m-%d %H:%M:%S",
+                }
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "default",
+                    "level": "INFO",
+                }
+            },
+            "root": {"level": "INFO", "handlers": ["console"]},
+        }
+    )
+
+disable_rate_limiting = os.environ.get("DISABLE_RATE_LIMITING", "false").lower() in ("1", "true", "yes")
+limiter = Limiter(key_func=get_remote_address, default_limits=[], enabled=not disable_rate_limiting)
+
+
+def configure_app(application: Flask) -> None:
+    secret_key = os.environ.get("SECRET_KEY")
+    if not secret_key:
+        raise RuntimeError("SECRET_KEY environment variable must be set")
+
+    application.config.update(
+        SECRET_KEY=secret_key,
+        UPLOAD_FOLDER=str(UPLOAD_FOLDER),
+        MAX_CONTENT_LENGTH=8 * 1024 * 1024,
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        PREFERRED_URL_SCHEME="https",
+        FORCE_HTTPS=os.environ.get("FORCE_HTTPS", "false").lower() in ("1", "true", "yes"),
+        DISABLE_RATE_LIMITING=disable_rate_limiting,
+    )
+    init_logging()
+    application.wsgi_app = ProxyFix(application.wsgi_app, x_proto=1, x_host=1)
+    limiter.init_app(application)
+
+
+configure_app(app)
 
 
 def get_db() -> sqlite3.Connection:
-    connection = sqlite3.connect(DATABASE_PATH)
+    connection = sqlite3.connect(DATABASE_PATH, timeout=10)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
     return connection
+
+
+def bootstrap_admin_from_env(db: sqlite3.Connection) -> None:
+    username = os.environ.get("INITIAL_ADMIN_USERNAME")
+    password = os.environ.get("INITIAL_ADMIN_PASSWORD")
+    if username and password:
+        username = str(username).strip()
+        password = str(password)
+        if username and password:
+            db.execute(
+                "INSERT INTO admins (id, username, password) VALUES (?, ?, ?)",
+                (1, username, generate_password_hash(password)),
+            )
+            app.logger.info("Initial admin account created from environment variables")
 
 
 def init_db() -> None:
@@ -76,12 +206,14 @@ def init_db() -> None:
             )
             """
         )
-        existing_admin = db.execute("SELECT id FROM admins WHERE username = ?", ("admin",)).fetchone()
+        existing_admin = db.execute("SELECT id FROM admins LIMIT 1").fetchone()
         if existing_admin is None:
-            db.execute(
-                "INSERT INTO admins (id, username, password) VALUES (?, ?, ?)",
-                (1, "admin", generate_password_hash("admin123")),
-            )
+            bootstrap_admin_from_env(db)
+            existing_admin = db.execute("SELECT id FROM admins LIMIT 1").fetchone()
+            if existing_admin is None:
+                raise RuntimeError(
+                    "No admin account exists. Set INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD before startup."
+                )
         existing_products = db.execute("SELECT COUNT(*) AS count FROM products").fetchone()["count"]
         if existing_products == 0:
             db.executemany(
@@ -130,12 +262,47 @@ def init_db() -> None:
         db.commit()
 
 
+def resolve_language() -> str:
+    requested = request.args.get("lang", "").lower()
+    if requested in SUPPORTED_LANGUAGES:
+        return requested
+    saved = session.get("lang")
+    if saved in SUPPORTED_LANGUAGES:
+        return saved
+    return DEFAULT_LANGUAGE
+
+
 @app.before_request
-def ensure_database() -> None:
-    init_db()
+def prepare_request() -> None:
+    lang = resolve_language()
+    if request.args.get("lang", "").lower() in SUPPORTED_LANGUAGES:
+        session["lang"] = lang
+    g.lang = lang
+
+    if app.config.get("FORCE_HTTPS") and request.method in ("GET", "HEAD"):
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "http")
+        if forwarded_proto != "https" and request.scheme != "https":
+            return redirect(request.url.replace("http://", "https://"), code=301)
+
+
+init_db()
 
 
 @app.after_request
+def after_request(response):
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://*; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none';"
+    if app.config.get("FORCE_HTTPS"):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 def disable_api_caching(response):
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -180,7 +347,17 @@ def normalize_text(value: Any, max_length: int = 500) -> str:
         raise ValueError
     if len(text) > max_length:
         raise ValueError
+    if "<" in text or ">" in text:
+        raise ValueError
     return text
+
+
+def validate_category(value: Any) -> str:
+    category = normalize_text(value, 80)
+    with get_db() as db:
+        if db.execute("SELECT name FROM categories WHERE name = ?", (category,)).fetchone() is None:
+            raise ValueError
+    return category
 
 
 def login_required(view):
@@ -271,6 +448,7 @@ def api_create_category():
     try:
         name = normalize_text(payload.get("name"), 80)
     except (TypeError, ValueError):
+        app.logger.warning("Invalid category creation payload")
         return jsonify({"error": "invalid category data"}), 400
 
     with get_db() as db:
@@ -279,8 +457,9 @@ def api_create_category():
             db.commit()
             row = db.execute("SELECT name FROM categories WHERE id = ?", (cursor.lastrowid,)).fetchone()
         except sqlite3.IntegrityError:
+            app.logger.warning("Duplicate category creation attempt: %s", name)
             return jsonify({"error": "category already exists"}), 409
-
+    app.logger.info("Created category: %s", name)
     return jsonify({"name": row["name"]}), 201
 
 
@@ -293,6 +472,7 @@ def api_delete_category(category_name: str):
             return jsonify({"error": "category is in use"}), 409
         db.execute("DELETE FROM categories WHERE name = ?", (category_name,))
         db.commit()
+    app.logger.info("Deleted category: %s", category_name)
     return jsonify({"message": "deleted"})
 
 
@@ -313,22 +493,26 @@ def api_get_product(product_id: int):
 
 
 @app.route("/api/login", methods=["POST"])
+@limiter.limit("5 per minute")
 def api_login():
     payload = request.get_json(silent=True) or request.form
     username = str(payload.get("username", "")).strip()
     password = str(payload.get("password", ""))
     if not username or not password:
+        app.logger.warning("Login attempt with missing credentials")
         return jsonify({"error": "username and password are required"}), 400
 
     with get_db() as db:
         row = db.execute("SELECT * FROM admins WHERE username = ?", (username,)).fetchone()
 
     if row is None or not check_password_hash(row["password"], password):
+        app.logger.warning("Failed login attempt for user: %s", username)
         return jsonify({"error": "invalid credentials"}), 401
 
     session.clear()
     session[SESSION_ADMIN_KEY] = row["id"]
     session[SESSION_CSRF_KEY] = secrets.token_urlsafe(32)
+    app.logger.info("Admin logged in: %s", username)
     return jsonify({"message": "logged in", "admin": {"id": row["id"], "username": row["username"]}, "csrfToken": session[SESSION_CSRF_KEY]})
 
 
@@ -336,7 +520,9 @@ def api_login():
 @login_required
 def api_logout():
     require_csrf()
+    admin = current_admin()
     session.clear()
+    app.logger.info("Admin logged out: %s", admin["username"] if admin else "unknown")
     return jsonify({"message": "logged out"})
 
 
@@ -352,11 +538,14 @@ def api_session():
 def api_upload():
     require_csrf()
     if "image" not in request.files:
+        app.logger.warning("Upload attempt without image file")
         return jsonify({"error": "image file required"}), 400
     file = request.files["image"]
     if not file.filename:
+        app.logger.warning("Upload attempt with empty filename")
         return jsonify({"error": "image file required"}), 400
     if not allowed_file(file.filename):
+        app.logger.warning("Unsupported upload file type: %s", file.filename)
         return jsonify({"error": "unsupported file type"}), 400
 
     filename = secure_filename(file.filename)
@@ -364,6 +553,7 @@ def api_upload():
     final_name = f"{unique_prefix}_{filename}"
     save_path = UPLOAD_FOLDER / final_name
     file.save(save_path)
+    app.logger.info("Uploaded product image: %s", final_name)
     return jsonify({"message": "uploaded", "filename": final_name, "url": url_for("uploaded_product_image", filename=final_name)})
 
 
@@ -375,11 +565,12 @@ def api_create_product():
     try:
         name = normalize_text(payload.get("name"), 120)
         description = normalize_text(payload.get("description"), 1000)
-        category = normalize_text(payload.get("category"), 80)
+        category = validate_category(payload.get("category"))
         price = sanitize_float(payload.get("price"), 0)
         stock = sanitize_int(payload.get("stock"), 0)
         image = str(payload.get("image", "")).strip()
     except (TypeError, ValueError):
+        app.logger.warning("Invalid product creation payload")
         return jsonify({"error": "invalid product data"}), 400
 
     with get_db() as db:
@@ -389,6 +580,7 @@ def api_create_product():
         )
         db.commit()
         row = db.execute("SELECT * FROM products WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    app.logger.info("Created product: %s", name)
     return jsonify(row_to_product(row)), 201
 
 
@@ -405,11 +597,12 @@ def api_update_product(product_id: int):
         try:
             name = normalize_text(payload.get("name", existing["name"]), 120)
             description = normalize_text(payload.get("description", existing["description"]), 1000)
-            category = normalize_text(payload.get("category", existing["category"]), 80)
+            category = validate_category(payload.get("category", existing["category"]))
             price = sanitize_float(payload.get("price", existing["price"]), 0)
             stock = sanitize_int(payload.get("stock", existing["stock"]), 0)
             image = str(payload.get("image", existing["image"]) or "").strip()
         except (TypeError, ValueError):
+            app.logger.warning("Invalid product update payload for id %s", product_id)
             return jsonify({"error": "invalid product data"}), 400
 
         db.execute(
@@ -422,6 +615,7 @@ def api_update_product(product_id: int):
         )
         db.commit()
         row = db.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    app.logger.info("Updated product %s: %s", product_id, name)
     return jsonify(row_to_product(row))
 
 
@@ -435,6 +629,7 @@ def api_delete_product(product_id: int):
             return jsonify({"error": "not found"}), 404
         db.execute("DELETE FROM products WHERE id = ?", (product_id,))
         db.commit()
+    app.logger.info("Deleted product id %s", product_id)
     return jsonify({"message": "deleted"})
 
 
@@ -447,16 +642,62 @@ def handle_404(_error):
 
 @app.errorhandler(413)
 def handle_413(_error):
+    app.logger.warning("Request rejected: file too large")
     return jsonify({"error": "file too large"}), 413
+
+
+@app.errorhandler(Exception)
+def handle_unhandled_exception(error):
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(error, HTTPException):
+        return error
+
+    app.logger.exception("Unhandled exception")
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "internal server error"}), 500
+    return redirect(url_for("index"))
+
+
+def translate(key: str, **kwargs: Any) -> str:
+    text = TRANSLATIONS.get(key, {}).get(getattr(g, "lang", DEFAULT_LANGUAGE), TRANSLATIONS.get(key, {}).get(DEFAULT_LANGUAGE, key))
+    if not kwargs:
+        return text
+    return text.format(**kwargs)
+
+
+def build_lang_url(target_lang: str) -> str:
+    if request.endpoint is None:
+        return url_for("index", lang=target_lang)
+    args = dict(request.view_args or {})
+    query_args = request.args.to_dict(flat=True)
+    query_args.pop("lang", None)
+    args.update(query_args)
+    args["lang"] = target_lang
+    try:
+        return url_for(request.endpoint, **args)
+    except Exception:
+        return url_for("index", lang=target_lang)
 
 
 @app.context_processor
 def inject_globals():
     with get_db() as db:
         categories = [row["name"] for row in db.execute("SELECT name FROM categories ORDER BY name ASC").fetchall()]
-    return {"logged_in_admin": current_admin(), "product_categories": categories}
+    i18n_json = json.dumps(TRANSLATIONS, ensure_ascii=False)
+    lang = getattr(g, "lang", DEFAULT_LANGUAGE)
+    return {
+        "logged_in_admin": current_admin(),
+        "product_categories": categories,
+        "t": translate,
+        "lang": lang,
+        "dir": "rtl" if lang == "ar" else "ltr",
+        "supported_languages": list(SUPPORTED_LANGUAGES.items()),
+        "lang_url": build_lang_url,
+        "i18n_json": i18n_json,
+    }
 
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    app.run()

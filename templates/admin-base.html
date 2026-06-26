@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}" dir="{{ dir }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Lumora Cosmetics Admin{% endblock %}</title>
   <meta name="description" content="Protected Lumora Cosmetics admin area.">
+  <link rel="icon" href="{{ url_for('static', filename='images/favicon.png') }}" type="image/png">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <script defer src="{{ url_for('static', filename='js/admin.js') }}"></script>
   {% block head %}{% endblock %}
@@ -13,7 +14,7 @@
   <div class="page-shell">
     <header class="site-header admin-header">
       <a class="brand" href="{{ url_for('admin_dashboard_page') }}">
-        <img class="brand-logo" src="{{ url_for('static', filename='images/logo.svg') }}" alt="Lumora Cosmetics logo">
+        <img class="brand-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Lumora Cosmetics logo">
         <span>
           <strong>Lumora Admin</strong>
           <small>Product control</small>

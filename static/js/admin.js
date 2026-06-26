@@ -274,6 +274,16 @@
     }
   }
 
+  const catalogChannel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("catalog-updates") : null;
+
+  function broadcastCatalogUpdate() {
+    const timestamp = String(Date.now());
+    if (catalogChannel) {
+      catalogChannel.postMessage({ type: "catalog-updated", timestamp });
+    }
+    localStorage.setItem("catalog_updated_at", timestamp);
+  }
+
   async function submitCategoryForm(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -288,6 +298,7 @@
       });
       form.reset();
       showToast(`Category ${categoryName} added`, "success");
+      broadcastCatalogUpdate();
       await loadCategories();
     } catch (error) {
       showToast(error.message || "Unable to add category", "error");
@@ -301,6 +312,7 @@
     try {
       await adminFetch(`/api/categories/${encodeURIComponent(categoryName)}`, { method: "DELETE" });
       showToast(`${categoryName} deleted`, "success");
+      broadcastCatalogUpdate();
       await loadCategories();
       await loadProducts();
     } catch (error) {

@@ -1,0 +1,22 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Flask runtime files
+database.db
+.env
+
+# Uploads and local storage
+uploads/
+MyWebset_data/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+ Thumbs.db
